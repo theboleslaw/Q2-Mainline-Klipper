@@ -1,1 +1,7 @@
 .theme/
+saved_variables.cfg
+officiall_filas_list.cfg
+printer-*.cfg
+*.bkp
+*.bak
+*.old-*
