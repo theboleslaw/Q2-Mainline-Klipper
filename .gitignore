@@ -6,3 +6,5 @@ printer-*.cfg
 *.bak
 *.old-*
 plr_mesh.cfg
+q2_nobox.cfg
+mmu_keep_dry.cfg
