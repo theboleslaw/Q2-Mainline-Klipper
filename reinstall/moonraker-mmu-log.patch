@@ -1,0 +1,93 @@
+From 93606b5ab2c4924ba71425ce8d25ebdbf177b47e Mon Sep 17 00:00:00 2001
+From: theboleslaw <theboleslaw@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 03:10:37 +0800
+Subject: [PATCH] Local: add MMU log rollover and MMU server component
+
+---
+ moonraker/components/mmu_server.py     |  1 +
+ moonraker/components/q2_calibration.py |  1 +
+ moonraker/components/timelapse.py      |  1 +
+ moonraker/loghelper.py                 | 28 +++++++++++++++++++++++++-
+ 4 files changed, 30 insertions(+), 1 deletion(-)
+ create mode 120000 moonraker/components/mmu_server.py
+ create mode 120000 moonraker/components/q2_calibration.py
+ create mode 120000 moonraker/components/timelapse.py
+
+diff --git a/moonraker/components/mmu_server.py b/moonraker/components/mmu_server.py
+new file mode 120000
+index 0000000..3dcbcba
+--- /dev/null
++++ b/moonraker/components/mmu_server.py
+@@ -0,0 +1 @@
++/home/cloud/Happy-Hare/components/mmu_server.py
+\ No newline at end of file
+diff --git a/moonraker/components/q2_calibration.py b/moonraker/components/q2_calibration.py
+new file mode 120000
+index 0000000..3562a9e
+--- /dev/null
++++ b/moonraker/components/q2_calibration.py
+@@ -0,0 +1 @@
++/home/cloud/q2-offload/host/components/q2_calibration.py
+\ No newline at end of file
+diff --git a/moonraker/components/timelapse.py b/moonraker/components/timelapse.py
+new file mode 120000
+index 0000000..35482c2
+--- /dev/null
++++ b/moonraker/components/timelapse.py
+@@ -0,0 +1 @@
++/home/cloud/moonraker-timelapse/component/timelapse.py
+\ No newline at end of file
+diff --git a/moonraker/loghelper.py b/moonraker/loghelper.py
+index 74435e0..32cb922 100644
+--- a/moonraker/loghelper.py
++++ b/moonraker/loghelper.py
+@@ -177,6 +177,21 @@ class LogManager:
+         eventloop = self.server.get_event_loop()
+         return eventloop.run_in_thread(self.file_hdlr.doRollover)
+ 
++    def rollover_mmu_log(self) -> Awaitable[None]:
++        if self.file_hdlr is None:
++            raise self.server.error("File Logging Disabled")
++        log_dir = os.path.dirname(self.file_hdlr.app_args['log_file'])
++        mmu_log = os.path.join(log_dir, 'mmu.log')
++        if not os.path.isfile(mmu_log):
++            raise self.server.error(f"Log file '{mmu_log}' not found")
++        eventloop = self.server.get_event_loop()
++        return eventloop.run_in_thread(self._truncate_log, mmu_log)
++
++    @staticmethod
++    def _truncate_log(path: str) -> None:
++        with open(path, 'r+') as f:
++            f.truncate(0)
++
+     def stop_logging(self):
+         if self.listener is not None:
+             self.listener.stop()
+@@ -184,7 +199,7 @@ class LogManager:
+     async def _handle_log_rollover(
+         self, web_request: WebRequest
+     ) -> Dict[str, Any]:
+-        log_apps = ["moonraker", "klipper"]
++        log_apps = ["moonraker", "klipper", "MMU"]
+         app = web_request.get_str("application", None)
+         result: Dict[str, Any] = {"rolled_over": [], "failed": {}}
+         if app is not None:
+@@ -211,4 +226,15 @@ class LogManager:
+                 result["failed"]["klipper"] = str(e)
+             else:
+                 result["rolled_over"].append("klipper")
++        if "MMU" in log_apps:
++            try:
++                ret = self.rollover_mmu_log()
++                if ret is not None:
++                    await ret
++            except asyncio.CancelledError:
++                raise
++            except Exception as e:
++                result["failed"]["MMU"] = str(e)
++            else:
++                result["rolled_over"].append("MMU")
+         return result
+-- 
+2.47.3
+

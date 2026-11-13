@@ -1,0 +1,411 @@
+From e905052171af801f495c608ddb0f9e48faf30007 Mon Sep 17 00:00:00 2001
+From: theboleslaw <theboleslaw@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 03:10:43 +0800
+Subject: [PATCH] Local: pin Happy Hare development@87995a2, Box heater fan 38
+ C, empty-gate rotation, local MMU patches
+
+---
+ VERSIONS                                      |   4 +-
+ config/happy-hare/overrides.cfg               |  10 +-
+ ...-feat-mmu-match-base-material-family.patch |  57 ++++++
+ ...mmu-remember-previous-filament-color.patch |  26 +++
+ ...-heater-rotate-empty-spools-in-print.patch | 193 ++++++++++++++++++
+ .../0011-mesh-toggle-virtual-output-pin.patch |  43 ++++
+ 6 files changed, 327 insertions(+), 6 deletions(-)
+ create mode 100644 patches/happy-hare/0009-feat-mmu-match-base-material-family.patch
+ create mode 100644 patches/happy-hare/0010-feat-mmu-remember-previous-filament-color.patch
+ create mode 100644 patches/happy-hare/0012-feat-heater-rotate-empty-spools-in-print.patch
+ create mode 100644 patches/klipper/0011-mesh-toggle-virtual-output-pin.patch
+
+diff --git a/VERSIONS b/VERSIONS
+index b677411..6aa5793 100644
+--- a/VERSIONS
++++ b/VERSIONS
+@@ -11,8 +11,8 @@ KLIPPER_REF=29d4ec2d6d840ee839333306003a400da186d41d
+ # A commit set by hand, ahead of the latest release (e.g. on development, with our merged
+ # changes), is kept until a release contains it (scripts/bump.sh).
+ HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
+-HAPPY_HARE_RELEASE=development@2065331
+-HAPPY_HARE_REF=20653315fc3d9e326459b036b5da5f7577f78771
++HAPPY_HARE_RELEASE=development@87995a2
++HAPPY_HARE_REF=87995a23c512f2616baca31f36ff98962e9df1a4
+ 
+ MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
+ MOONRAKER_BRANCH=master
+diff --git a/config/happy-hare/overrides.cfg b/config/happy-hare/overrides.cfg
+index 7b9584e..6dfd624 100644
+--- a/config/happy-hare/overrides.cfg
++++ b/config/happy-hare/overrides.cfg
+@@ -99,9 +99,11 @@ maximum_deviation: 100
+ # shutdown_speed 0: all three fans starting at 100% on a Klipper shutdown or restart
+ # browns out the Box USB hub
+ [mmu_hardware_unit0.cfg :: heater_fan unit0_heater_fan_a]
++heater_temp: 38
+ shutdown_speed: 0
+ 
+ [mmu_hardware_unit0.cfg :: heater_fan unit0_heater_fan_b]
++heater_temp: 38
+ shutdown_speed: 0
+ 
+ [mmu_hardware_unit0.cfg :: controller_fan unit0_board_fan]
+@@ -156,10 +158,10 @@ heater_max_temp: 90
+ heater_rotate_interval: 5
+ heater_rotate_distance: 50
+ heater_rotate_speed: 80
+-# "Turn the spools" with the spools loaded (patch 0008): each filament parked in its gate moves
+-# back and forth between its park (80 mm before the hub) and 300 mm behind it, never forward,
+-# 50 mm every 5 minutes. The gear keeps hold of it well past that: NFC scans go 480 mm back.
+-heater_rotate_loaded_travel: 300
++# Only empty gates rotate while heating/printing. Spools with filament inserted are left
++# alone, even when their filament is parked in the gate.
++heater_rotate_loaded_travel: 0
++heater_rotate_in_print: 1
+ skip_cal_rotation_distance: 1
+ 
+ [mmu_macro_vars.cfg :: save_variables]
+diff --git a/patches/happy-hare/0009-feat-mmu-match-base-material-family.patch b/patches/happy-hare/0009-feat-mmu-match-base-material-family.patch
+new file mode 100644
+index 0000000..739f421
+--- /dev/null
++++ b/patches/happy-hare/0009-feat-mmu-match-base-material-family.patch
+@@ -0,0 +1,57 @@
++From 924f76b6e07ec4d18da503a3ce75c2e14af256a4 Mon Sep 17 00:00:00 2001
++From: q2-offload <q2-offload@users.noreply.github.com>
++Date: Tue, 10 Nov 2026 00:52:42 +0800
++Subject: [PATCH] feat(mmu): match base material family during automapping
++
++---
++ extras/mmu/mmu_gate_maps.py | 15 +++++++++++----
++ 1 file changed, 11 insertions(+), 4 deletions(-)
++
++diff --git a/extras/mmu/mmu_gate_maps.py b/extras/mmu/mmu_gate_maps.py
++index 39fe85ae..aab835a2 100644
++--- a/extras/mmu/mmu_gate_maps.py
+++++ b/extras/mmu/mmu_gate_maps.py
++@@ -874,13 +874,17 @@ class MmuGateMaps:
++             elif strategy == AUTOMAP_CLOSEST_COLOR:
++                 if tool_to_remap['material'] == "unknown":
++                     errors.append("When automapping with closest color, the tool material must be set.")
++-                if tool_to_remap['material'] not in self.gate_material:
+++                tool_family = self.material_family(tool_to_remap['material'])
+++                if not any(
+++                    self._normalize_material(material) and self.material_family(material) == tool_family
+++                    for material in self.gate_material
+++                ):
++                     errors.append("No gate has a filament matching the desired material (%s). Available are : %s" % (tool_to_remap['material'], self.gate_material))
++                 if not errors:
++                     color_list = []
++                     for gn, color in enumerate(search_in):
++                         gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
++-                        if gm == tool_to_remap['material'].lower():
+++                        if self.material_family(gm) == tool_family:
++                             color_list.append(color)
++                     if not color_list:
++                         errors.append("Gates with %s are missing color information..." % tool_to_remap['material'])
++@@ -889,7 +893,7 @@ class MmuGateMaps:
++                     closest, distance = MmuColorUtils.find_closest_color(tool_to_remap['color'], color_list)
++                     for gn, color in enumerate(search_in):
++                         gm = "".join(self.gate_material[gn].strip()).replace('#', '').lower()
++-                        if gm == tool_to_remap['material'].lower():
+++                        if self.material_family(gm) == tool_family:
++                             if closest == color:
++                                 t = self.p.console_gate_stat
++                                 if distance > 0.5:
++@@ -953,7 +957,10 @@ class MmuGateMaps:
++     def _material_matches(self, tool_material, gate_material):
++         tm = self._normalize_material(tool_material)
++         gm = self._normalize_material(gate_material)
++-        return not tm or not gm or tm == gm
+++        if not tm or not gm:
+++            return True
+++        # Match the base material family so "ASA" also matches "ASA-CF" and "ASA Silk".
+++        return self.material_family(tm) == self.material_family(gm)
++ 
++     # Base material family is the leading name, e.g. "PLA Silk", "PLA-CF" and "PLA+" are all "pla"
++     def material_family(self, material):
++-- 
++2.47.3
++
+diff --git a/patches/happy-hare/0010-feat-mmu-remember-previous-filament-color.patch b/patches/happy-hare/0010-feat-mmu-remember-previous-filament-color.patch
+new file mode 100644
+index 0000000..3af3818
+--- /dev/null
++++ b/patches/happy-hare/0010-feat-mmu-remember-previous-filament-color.patch
+@@ -0,0 +1,26 @@
++diff --git a/extras/mmu/mmu_constants.py b/extras/mmu/mmu_constants.py
++index a5492b45..d63991dc 100644
++--- a/extras/mmu/mmu_constants.py
+++++ b/extras/mmu/mmu_constants.py
++@@ -323,6 +323,7 @@ VARS_MMU_FILAMENT_CUT_FRAGMENT       = "mmu_state_filament_cut_fragment"
++ VARS_MMU_FILAMENT_REMAINING          = "mmu_state_filament_remaining"   # Legacy name of cut fragment: non-namespaced copy still written for UIs, namespaced copy only read as fallback
++ VARS_MMU_FILAMENT_REMAINING_COLOR    = "mmu_state_filament_remaining_color"
++ VARS_MMU_FILAMENT_REMAINING_MATERIAL = "mmu_state_filament_remaining_material"
+++VARS_MMU_PREVIOUS_COLOR              = "mmu_state_previous_color"
++ VARS_MMU_FILAMENT_REMAINING_TEMP     = "mmu_state_filament_remaining_temp"
++ VARS_MMU_RETRACTED_LENGTH            = "mmu_state_retracted_length"
++ VARS_MMU_SWAP_STATISTICS             = "mmu_statistics_swaps"
++diff --git a/extras/mmu/unit/mmu_extruder_wrapper.py b/extras/mmu/unit/mmu_extruder_wrapper.py
++index c8f802f4..e9d67c98 100644
++--- a/extras/mmu/unit/mmu_extruder_wrapper.py
+++++ b/extras/mmu/unit/mmu_extruder_wrapper.py
++@@ -180,6 +180,9 @@ class MmuExtruderWrapper():
++ 
++ 
++     def set_filament_cut_fragment(self, length, color=UNKNOWN_FILAMENT_COLOR):
+++        # Remember the color that was in the hotend before this update so the purge logic can
+++        # tell whether the next filament actually changes color.
+++        self.var_manager.set(VARS_MMU_PREVIOUS_COLOR, self.filament_remaining_color, self.name, write=True)
++         self.filament_cut_fragment = length
++         self.filament_remaining_color = color
++         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1))) # TODO TEMP Legacy non-namespaced name still read by Mainsail/Fluidd UI
+diff --git a/patches/happy-hare/0012-feat-heater-rotate-empty-spools-in-print.patch b/patches/happy-hare/0012-feat-heater-rotate-empty-spools-in-print.patch
+new file mode 100644
+index 0000000..3ce5ef0
+--- /dev/null
++++ b/patches/happy-hare/0012-feat-heater-rotate-empty-spools-in-print.patch
+@@ -0,0 +1,193 @@
++From 590b749906d05b9a7066a4f25c33fef5d13e4fb5 Mon Sep 17 00:00:00 2001
++From: q2-offload <q2-offload@users.noreply.github.com>
++Date: Thu, 12 Nov 2026 01:34:37 +0800
++Subject: [PATCH] feat(heater): rotate empty spools during print heating
++
++---
++ extras/mmu/commands/mmu_heater.py          | 12 +++
++ extras/mmu/unit/mmu_environment_manager.py | 85 ++++++++++++++++------
++ 2 files changed, 74 insertions(+), 23 deletions(-)
++
++diff --git a/extras/mmu/commands/mmu_heater.py b/extras/mmu/commands/mmu_heater.py
++index 38a83e04..10f306f2 100644
++--- a/extras/mmu/commands/mmu_heater.py
+++++ b/extras/mmu/commands/mmu_heater.py
++@@ -170,6 +170,9 @@ class MmuHeaterCommand(BaseCommand):
++                     em.set_heater_target(temp, gates)
++                 except MmuError as e:
++                     self.mmu.log_error(str(e))
+++                if rotate:
+++                    em.start_rotation(gates, rotate_interval)
+++                    self.mmu.log_info("Spool rotation enabled while print heating")
++                 return
++ 
++             # Single heater mode
++@@ -177,6 +180,15 @@ class MmuHeaterCommand(BaseCommand):
++                 em.set_heater_target(temp)
++             except MmuError as e:
++                 self.mmu.log_error(str(e))
+++            if rotate:
+++                em.start_rotation(None, rotate_interval)
+++                self.mmu.log_info("Spool rotation enabled while print heating")
+++            return
+++
+++        # Rotation only (on an already-running print heater or drying cycle)
+++        if not dry and temp is None and rotate:
+++            em.start_rotation(gates if gates_param else None, rotate_interval)
+++            self.mmu.log_info("Spool rotation enabled")
++             return
++ 
++         # Initiate drying cycle -------------------------------------------------
++diff --git a/extras/mmu/unit/mmu_environment_manager.py b/extras/mmu/unit/mmu_environment_manager.py
++index f9544a1a..d23b3cbf 100644
++--- a/extras/mmu/unit/mmu_environment_manager.py
+++++ b/extras/mmu/unit/mmu_environment_manager.py
++@@ -85,6 +85,7 @@ class MmuEnvironmentManager:
++         self.printer.register_event_handler("mmu:espooler_burst_done", self._handle_espooler_burst_done)
++ 
++         self._periodic_timer = self.reactor.register_timer(self._check_mmu_environment)
+++        self._rotation_timer = self.reactor.register_timer(self._check_rotation)
++ 
++         # Gear rotation while printing lives outside reinit() so a running move is always finished off
++         self._bg_rotate_timer = self.reactor.register_timer(self._bg_rotate_event)
++@@ -135,6 +136,7 @@ class MmuEnvironmentManager:
++         self._rotate_timer = None
++         self._rotate_enabled = False
++         self._rotate_print_warned = False
+++        self._rotation_gates = None
++         self.spools_to_rotate = [] # Queue of spools that we are rotating (one at a time)
++ 
++ 
++@@ -249,6 +251,7 @@ class MmuEnvironmentManager:
++         self.spools_to_rotate = []
++         self._rotate_enabled = bool(rotate)
++         self._rotate_print_warned = False
+++        self._rotation_gates = None
++         self._rotate_timer = self._drying_rotate_interval * 60.0 if self._rotate_enabled else None
++ 
++         return per_gate_plan, warnings, info
++@@ -288,6 +291,7 @@ class MmuEnvironmentManager:
++ 
++             for gate in gates:
++                 self._heater_off(gate=gate)
+++            self.stop_rotation()
++             return "Selected gate heaters turned off"
++ 
++         if self.is_drying():
++@@ -295,6 +299,7 @@ class MmuEnvironmentManager:
++             return "Cancelled drying cycle"
++ 
++         self._heater_off()
+++        self.stop_rotation()
++         return "Heater turned off"
++ 
++ 
++@@ -656,31 +661,66 @@ class MmuEnvironmentManager:
++             self._rotate_timer -= ENV_CHECK_INTERVAL
++ 
++             if self._rotate_timer < 0:
++-                # Re-check EMPTY status at time of rotation (supports dynamic state changes)
++-                if self.has_per_gate_heaters():
++-                    candidates = list(self._get_active_gates())
++-                else:
++-                    candidates = self.mmu_unit.gate_range()
+++                self._rotate_periodic()
+++                self._rotate_timer = self._drying_rotate_interval * 60.0 # To seconds
++ 
++-                gates_to_rotate = []
++-                for gate in candidates:
++-                    try:
++-                        if self.mmu.gate_status[gate] == GATE_EMPTY:
++-                            gates_to_rotate.append(gate)
++-                    except Exception:
++-                        pass
+++        # Reschedule
+++        return eventtime + ENV_CHECK_INTERVAL
++ 
++-                if gates_to_rotate:
++-                    self._rotate_spools_in_gates(gates_to_rotate)
++ 
++-                gates_to_sweep = [gate for gate in candidates if self._can_sweep(gate)]
++-                if gates_to_sweep:
++-                    self._sweep_parked_spools(gates_to_sweep)
+++    def _check_rotation(self, eventtime):
+++        """
+++        Rotation-only timer for raw heater control (MMU_HEATER TEMP=... ROTATE=1).
+++        A drying cycle keeps using _check_mmu_environment for its rotation.
+++        """
+++        if not self._rotate_enabled or self._rotate_timer is None or self.is_drying():
+++            return self.reactor.NEVER
+++        self._rotate_timer -= ENV_CHECK_INTERVAL
+++        if self._rotate_timer < 0:
+++            self._rotate_periodic()
+++            self._rotate_timer = self._drying_rotate_interval * 60.0
+++        return eventtime + ENV_CHECK_INTERVAL
++ 
++-                self._rotate_timer = self._drying_rotate_interval * 60.0 # To seconds
+++    def _rotate_periodic(self):
+++        # Re-check EMPTY status at time of rotation (supports dynamic state changes)
+++        if self.has_per_gate_heaters():
+++            candidates = list(self._get_active_gates())
+++        elif self._rotation_gates is not None:
+++            candidates = list(self._rotation_gates)
+++        else:
+++            candidates = self.mmu_unit.gate_range()
++ 
++-        # Reschedule
++-        return eventtime + ENV_CHECK_INTERVAL
+++        gates_to_rotate = []
+++        for gate in candidates:
+++            try:
+++                if self.mmu.gate_status[gate] == GATE_EMPTY:
+++                    gates_to_rotate.append(gate)
+++            except Exception:
+++                pass
+++
+++        if gates_to_rotate:
+++            self._rotate_spools_in_gates(gates_to_rotate)
+++
+++        gates_to_sweep = [gate for gate in candidates if self._can_sweep(gate)]
+++        if gates_to_sweep:
+++            self._sweep_parked_spools(gates_to_sweep)
+++
+++    def start_rotation(self, gates=None, rotate_interval=None):
+++        """Start spool rotation without starting a drying cycle (print heating)."""
+++        self._rotate_enabled = True
+++        self._drying_rotate_interval = rotate_interval or self.mmu_unit.p.heater_rotate_interval
+++        self._rotate_timer = self._drying_rotate_interval * 60.0
+++        self._rotation_gates = list(gates) if gates is not None else None
+++        self._rotate_print_warned = False
+++        if not self.is_drying():
+++            self.reactor.update_timer(self._rotation_timer, self.reactor.NOW)
+++
+++    def stop_rotation(self):
+++        self._rotate_timer = None
+++        self._rotate_enabled = False
+++        self._rotation_gates = None
+++        if self._rotation_timer is not None:
+++            self.reactor.update_timer(self._rotation_timer, self.reactor.NEVER)
++ 
++ 
++     def _start_drying_cycle(self, per_gate_plan=None):
++@@ -917,8 +957,7 @@ class MmuEnvironmentManager:
++                 self._drying_state = [DRYING_STATE_NONE] * self.mmu_unit.num_gates
++ 
++             # Stop rotation (a gear move in flight finishes, then its gear is turned off)
++-            self._rotate_timer = None
++-            self._rotate_enabled = False
+++            self.stop_rotation()
++             self._bg_rotate_gates = []
++             if repark:
++                 self._repark_swept_spools()
++@@ -1345,7 +1384,7 @@ class MmuEnvironmentManager:
++ 
++ 
++     def _bg_can_rotate(self, gate, stepper, end_time, est_print_time=None):
++-        if not (self.is_drying() and self._rotate_enabled and self.mmu_unit.p.heater_rotate_in_print):
+++        if not (self._rotate_enabled and self.mmu_unit.p.heater_rotate_in_print):
++             return False
++         if not self.mmu.is_in_print() or self.mmu.is_paused():
++             return False
++-- 
++2.47.3
++
+diff --git a/patches/klipper/0011-mesh-toggle-virtual-output-pin.patch b/patches/klipper/0011-mesh-toggle-virtual-output-pin.patch
+new file mode 100644
+index 0000000..178dc21
+--- /dev/null
++++ b/patches/klipper/0011-mesh-toggle-virtual-output-pin.patch
+@@ -0,0 +1,43 @@
++diff --git a/klippy/extras/mesh_toggle_pin.py b/klippy/extras/mesh_toggle_pin.py
++new file mode 100644
++index 000000000..563c1512b
++--- /dev/null
+++++ b/klippy/extras/mesh_toggle_pin.py
++@@ -0,0 +1,37 @@
+++# Virtual output_pin backing the Mainsail "Miscellaneous" bed mesh toggle.
+++#
+++# Mainsail lists printer objects whose name starts with "output_pin " in its
+++# Miscellaneous panel. This object has no physical pin; its value is backed by
+++# the enable_auto_mesh save variable used by PRINT_START.
+++
+++class MeshTogglePin:
+++    def __init__(self, config):
+++        self.printer = config.get_printer()
+++        self.name = config.get('pin_name', 'mesh_toggle')
+++        self.gcode = self.printer.lookup_object('gcode')
+++        self.gcode.register_mux_command(
+++            'SET_PIN', 'PIN', self.name, self.cmd_SET_PIN,
+++            desc='Set the virtual bed mesh toggle')
+++        self.printer.add_object('output_pin ' + self.name, self)
+++
+++    def _save_vars(self):
+++        return self.printer.lookup_object('save_variables')
+++
+++    def _value(self):
+++        enabled = self._save_vars().allVariables.get('enable_auto_mesh', True)
+++        return 1. if bool(enabled) else 0.
+++
+++    def get_status(self, eventtime):
+++        return {'value': self._value()}
+++
+++    def cmd_SET_PIN(self, gcmd):
+++        value = gcmd.get_float('VALUE', None, minval=0., maxval=1.)
+++        if value is None:
+++            raise gcmd.error('SET_PIN command must specify VALUE')
+++        self.gcode.run_script_from_command(
+++            'SAVE_VARIABLE VARIABLE=enable_auto_mesh VALUE=%s'
+++            % ('True' if value > 0. else 'False'))
+++
+++
+++def load_config(config):
+++    return MeshTogglePin(config)
+-- 
+2.47.3
+
