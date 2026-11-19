@@ -1,7 +1,7 @@
-From e905052171af801f495c608ddb0f9e48faf30007 Mon Sep 17 00:00:00 2001
+From 4671365667768c330cb872e57a8ff88da7c2236f Mon Sep 17 00:00:00 2001
 From: theboleslaw <theboleslaw@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 03:10:43 +0800
-Subject: [PATCH] Local: pin Happy Hare development@87995a2, Box heater fan 38
+Subject: [PATCH] Local: pin Happy Hare development@17b80c5, Box heater fan 38
  C, empty-gate rotation, local MMU patches
 
 ---
@@ -18,7 +18,7 @@ Subject: [PATCH] Local: pin Happy Hare development@87995a2, Box heater fan 38
  create mode 100644 patches/klipper/0011-mesh-toggle-virtual-output-pin.patch
 
 diff --git a/VERSIONS b/VERSIONS
-index b677411..6aa5793 100644
+index b677411..f965f65 100644
 --- a/VERSIONS
 +++ b/VERSIONS
 @@ -11,8 +11,8 @@ KLIPPER_REF=29d4ec2d6d840ee839333306003a400da186d41d
@@ -27,8 +27,8 @@ index b677411..6aa5793 100644
  HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
 -HAPPY_HARE_RELEASE=development@2065331
 -HAPPY_HARE_REF=20653315fc3d9e326459b036b5da5f7577f78771
-+HAPPY_HARE_RELEASE=development@87995a2
-+HAPPY_HARE_REF=87995a23c512f2616baca31f36ff98962e9df1a4
++HAPPY_HARE_RELEASE=development@17b80c5
++HAPPY_HARE_REF=17b80c5905883b41c4e1b6325505ca19a013799c
  
  MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
  MOONRAKER_BRANCH=master

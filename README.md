@@ -68,7 +68,7 @@ cd ~/q2-offload && ./install.sh update
 
 | File | Purpose |
 | --- | --- |
-| `reinstall/q2-offload-local.patch` | q2-offload `VERSIONS` pin (`development@87995a2`), local MMU patches, Box fan at 38 °C, empty-gate rotation, runout/park overrides |
+| `reinstall/q2-offload-local.patch` | q2-offload `VERSIONS` pin (`development@17b80c5`), local MMU patches, Box fan at 38 °C, empty-gate rotation, runout/park overrides |
 | `reinstall/moonraker-mmu-log.patch` | Moonraker `MMU` log rollover and `mmu_server` component |
 | `printer.cfg` | calibrated input shaper, load cell, bed mesh and machine settings |
 | `mmu/base/*.cfg` | Happy Hare config generated from the pinned version + overrides |
