@@ -6,7 +6,7 @@ PRINTER_IP="${1:-192.168.3.210}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 Q2="${Q2_OFFLOAD_DIR:-${HOME}/q2-offload}"
 CFG="${PRINTER_CONFIG_DIR:-${HOME}/printer_data/config}"
-TAG="${Q2_TAG:-v2026.11.12-beta.1}"
+TAG="${Q2_TAG:-v2026.11.25}"
 
 log() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }

@@ -18,7 +18,7 @@ git clone git@github.com:theboleslaw/Q2-Mainline-Klipper.git ~/Q2-Mainline-Klipp
 
 `reinstall/install.sh` does the following:
 
-1. clones q2-offload at `v2026.11.12-beta.1` (if it is not already there),
+1. clones q2-offload at `v2026.11.25` (if it is not already there),
 2. applies `reinstall/q2-offload-local.patch` — the Happy Hare pin, local MMU
    patches and overrides,
 3. copies this repo to `~/printer_data/config` when that directory does not
@@ -68,7 +68,7 @@ cd ~/q2-offload && ./install.sh update
 
 | File | Purpose |
 | --- | --- |
-| `reinstall/q2-offload-local.patch` | q2-offload `VERSIONS` pin (`development@17b80c5`), local MMU patches, Box fan at 38 °C, empty-gate rotation, runout/park overrides |
+| `reinstall/q2-offload-local.patch` | q2-offload `VERSIONS` pin (`development@6717a8a`), local MMU patches, Box fan at 38 °C, empty-gate rotation, runout/park overrides |
 | `reinstall/moonraker-mmu-log.patch` | Moonraker `MMU` log rollover and `mmu_server` component |
 | `printer.cfg` | calibrated input shaper, load cell, bed mesh and machine settings |
 | `mmu/base/*.cfg` | Happy Hare config generated from the pinned version + overrides |

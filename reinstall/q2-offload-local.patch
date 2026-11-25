@@ -1,7 +1,7 @@
-From 4671365667768c330cb872e57a8ff88da7c2236f Mon Sep 17 00:00:00 2001
+From 13d4e1904e1bd5e55bc1bbd902f6d765499c6821 Mon Sep 17 00:00:00 2001
 From: theboleslaw <theboleslaw@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 03:10:43 +0800
-Subject: [PATCH] Local: pin Happy Hare development@17b80c5, Box heater fan 38
+Subject: [PATCH] Local: pin Happy Hare development@6717a8a, Box heater fan 38
  C, empty-gate rotation, local MMU patches
 
 ---
@@ -18,17 +18,17 @@ Subject: [PATCH] Local: pin Happy Hare development@17b80c5, Box heater fan 38
  create mode 100644 patches/klipper/0011-mesh-toggle-virtual-output-pin.patch
 
 diff --git a/VERSIONS b/VERSIONS
-index b677411..f965f65 100644
+index 9961d34..70e4513 100644
 --- a/VERSIONS
 +++ b/VERSIONS
-@@ -11,8 +11,8 @@ KLIPPER_REF=29d4ec2d6d840ee839333306003a400da186d41d
+@@ -11,8 +11,8 @@ KLIPPER_REF=c9559fa04ec6b11fb1a9a1610903546319fcf310
  # A commit set by hand, ahead of the latest release (e.g. on development, with our merged
  # changes), is kept until a release contains it (scripts/bump.sh).
  HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
 -HAPPY_HARE_RELEASE=development@2065331
 -HAPPY_HARE_REF=20653315fc3d9e326459b036b5da5f7577f78771
-+HAPPY_HARE_RELEASE=development@17b80c5
-+HAPPY_HARE_REF=17b80c5905883b41c4e1b6325505ca19a013799c
++HAPPY_HARE_RELEASE=development@6717a8a
++HAPPY_HARE_REF=6717a8a4da48e7d31670d3056f35c1a57070bbc5
  
  MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
  MOONRAKER_BRANCH=master
