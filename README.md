@@ -78,6 +78,20 @@ The config repo **does not** restore `saved_variables.cfg` (runtime MMU state) o
 `mmu.old-*` backups. Recalibrate the input shaper, bed mesh and load cell after a
 fresh install if needed.
 
+### Klipper checkout
+
+`~/klipper` is a `blob:none` partial clone of `Klipper3d/klipper`. The working
+tree is the **`q2-offload`** branch: the pinned release (`v0.14.0`, `c9559fa04`)
+plus the Q2 patches applied as commits. `master` and the old `q2-klipper`
+experiment were pruned on 2026-11-25, so that branch is the only authoritative
+tree.
+
+`backup-um-20261114` is the pre-update backup branch (Klipper `v0.13.0` +
+patches). The retired `q2-klipper` series (19 patches, motion queuing, webhooks
+msgspec, load-cell allocation work) is kept as tag
+`archive/q2-klipper-ec8dc02`, with a tree tarball and the patch files in
+`~/backups/pre-20261125/`.
+
 ## Updating
 
 Update Klipper, Happy Hare, Moonraker and the web clients from a terminal:
