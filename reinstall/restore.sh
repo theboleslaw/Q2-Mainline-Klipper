@@ -40,6 +40,11 @@ if [ -d "${MR}/.git" ]; then
     fi
     apply_patch_if_missing "${MR}" 'Local: add MMU log rollover' \
         "${ROOT}/reinstall/moonraker-mmu-log.patch"
+    # q2-offload leaves Moonraker detached; reattach it so the update manager
+    # does not warn about a detached HEAD.
+    if ! git -C "${MR}" symbolic-ref -q HEAD >/dev/null; then
+        git -C "${MR}" checkout --quiet -B master HEAD
+    fi
     git -C "${MR}" branch --set-upstream-to=origin/master master >/dev/null 2>&1 || true
 fi
 
@@ -51,11 +56,14 @@ if [ -d "${HOME}/moonraker-timelapse/.git" ]; then
     git -C "${HOME}/moonraker-timelapse" checkout --quiet main
 fi
 
-# Klipper carries q2-offload's patches. Put it on a branch and ignore the
-# runtime extras (autopa, mesh toggle, Happy Hare symlinks) so it is not dirty.
+# Klipper carries q2-offload's patches. Keep it on the q2-offload branch (the
+# tree q2-offload checks out; it is not upstream master) and ignore the runtime
+# extras (autopa, mesh toggle, Happy Hare symlinks) so it is not dirty.
 if [ -d "${HOME}/klipper/.git" ]; then
-    git -C "${HOME}/klipper" checkout --quiet -B master HEAD
-    git -C "${HOME}/klipper" branch --set-upstream-to=origin/master master >/dev/null 2>&1 || true
+    git -C "${HOME}/klipper" checkout --quiet -B q2-offload HEAD
+    # The update manager needs a tracking remote to describe the branch; upstream
+    # master is the right comparison even though the tree carries local patches.
+    git -C "${HOME}/klipper" branch --set-upstream-to=origin/master q2-offload >/dev/null 2>&1 || true
     git -C "${HOME}/klipper" status --porcelain | awk '$1=="??"{print "/" substr($0,4)}' \
         >> "${HOME}/klipper/.git/info/exclude"
     sort -u "${HOME}/klipper/.git/info/exclude" -o "${HOME}/klipper/.git/info/exclude"
