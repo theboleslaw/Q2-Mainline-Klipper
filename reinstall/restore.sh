@@ -8,24 +8,27 @@ Q2="${Q2_OFFLOAD_DIR:-${HOME}/q2-offload}"
 MR="${MOONRAKER_DIR:-${HOME}/moonraker}"
 CFG="${PRINTER_CONFIG_DIR:-${HOME}/printer_data/config}"
 SKIP_RESTART="${SKIP_RESTART:-0}"
+TAG="${Q2_TAG:-v2026.11.25}"
 
 log() { printf '==> %s\n' "$*"; }
 
 apply_patch_if_missing() {
     local dir="$1" subject="$2" patch="$3"
     [ -d "${dir}/.git" ] || return 0
-    if git -C "${dir}" log --format=%s | grep -qF "${subject}"; then
+    # Command substitution reads all of git log: "log | grep -q" gets SIGPIPE,
+    # and with pipefail that looks like "commit missing" and resets the branch.
+    if [ -n "$(git -C "${dir}" log --format=%s --fixed-strings --grep="${subject}")" ]; then
         return 0
     fi
     log "Applying $(basename "${patch}") to ${dir}"
     git -C "${dir}" am --quiet -3 --committer-date-is-author-date "${patch}"
 }
 
-# q2-offload: keep the local pin/patches/overrides on a branch that tracks main.
+# q2-offload: keep the local pin/patches/overrides on top of the pinned tag.
 if [ -d "${Q2}/.git" ]; then
     git -C "${Q2}" fetch --quiet origin
-    if ! git -C "${Q2}" log --format=%s | grep -qF 'Local: pin Happy Hare'; then
-        git -C "${Q2}" checkout --quiet -B main origin/main
+    if [ -z "$(git -C "${Q2}" log --format=%s --fixed-strings --grep='Local: pin Happy Hare')" ]; then
+        git -C "${Q2}" checkout --quiet -B main "${TAG}"
     fi
     apply_patch_if_missing "${Q2}" 'Local: pin Happy Hare' \
         "${ROOT}/reinstall/q2-offload-local.patch"
@@ -37,7 +40,7 @@ fi
 # Moonraker: local MMU log rollover + mmu_server component.
 if [ -d "${MR}/.git" ]; then
     git -C "${MR}" fetch --quiet origin
-    if ! git -C "${MR}" log -1 --format=%s | grep -qF 'Local: add MMU log rollover'; then
+    if [ -z "$(git -C "${MR}" log --format=%s --fixed-strings --grep='Local: add MMU log rollover')" ]; then
         git -C "${MR}" checkout --quiet -B master origin/master
     fi
     apply_patch_if_missing "${MR}" 'Local: add MMU log rollover' \
