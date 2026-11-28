@@ -1,0 +1,269 @@
+From 5798471b8af7a712b4f46e3017b01a5bc77eb468 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <hauber.c@gmail.com>
+Date: Wed, 25 Nov 2026 11:36:45 +0100
+Subject: [PATCH] fix: show the config files an update kept, and take their new
+ version in one command
+
+An edited (or hand-copied) config file was kept with its new version
+written as .new, and the only trace was a warning in the update log: a
+host could run three-week-old macros without anyone noticing.
+
+- the update records the files it kept (not printer.cfg, which is never
+  replaced) and lists them with what to do: in the end-of-update dialog
+  in Mainsail/Fluidd (alone or with the "Klipper kept" one), and at the
+  end of install.sh install/update/host in the terminal
+- install.sh use-new replaces each kept file by its .new, keeps the
+  user's as .bak-<date>, and restarts Klipper; refused during a print
+- .new files (and config files created on a fresh install) were 0600,
+  the mode of the mktemp file they were copied from: now 0644
+- tests/host/kept-configs.sh (host matrix): edit a file, check the
+  notice, the list, the mode, use-new and that the notice goes away
+---
+ docs/use/updates.md        |  8 ++++--
+ install.sh                 | 22 ++++++++++++----
+ scripts/host.sh            | 52 ++++++++++++++++++++++++++++++++++++++
+ tests/host/kept-configs.sh | 27 ++++++++++++++++++++
+ tests/host/run.sh          |  2 ++
+ 5 files changed, 104 insertions(+), 7 deletions(-)
+ create mode 100755 tests/host/kept-configs.sh
+
+diff --git a/docs/use/updates.md b/docs/use/updates.md
+index ddbdb7d..2db6859 100644
+--- a/docs/use/updates.md
++++ b/docs/use/updates.md
+@@ -47,8 +47,12 @@ is offered.
+ 
+ ## What is yours
+ 
+-- Your edits to the installed config files are kept. When q2-offload changes one of them, the
+-  new version is written next to yours as `*.new`: compare them when you have a moment.
++- Your edits to the installed config files are kept, and so are files copied there by hand.
++  When q2-offload changes one of them, the new version is written next to yours as `*.new`,
++  and the end of the update lists them: in the dialog in Mainsail or Fluidd, and in the
++  terminal. Compare each with its `.new`; to take the new versions, when no print is running,
++  run `cd ~/q2-offload && ./install.sh use-new` on the host. It keeps yours as `.bak-<date>`
++  and restarts Klipper. `printer.cfg` is never replaced: its `.new` is only for comparison.
+ - `printer.cfg` and `moonraker.conf` are yours after the first install: updates don't change
+   them. When a version brings something worth adding there, the
+   [older installs](../reference/older-installs.md) page says what.
+diff --git a/install.sh b/install.sh
+index 794a7f0..b4bbd25 100755
+--- a/install.sh
++++ b/install.sh
+@@ -9,6 +9,7 @@
+ #   ./install.sh printer         (re)configure only the printer board (proxies, HelixScreen)
+ #   ./install.sh flash           reflash the MCUs, then bring Klipper to the same version
+ #   ./install.sh status          show what is installed and running
++#   ./install.sh use-new         take the new version of the config files an update kept (*.new)
+ #   ./install.sh check           check that every installed service answers
+ #   ./install.sh calibrate       check the load cell (three taps), then offer PID and input shaper
+ #
+@@ -55,11 +56,11 @@ fi
+ ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,detect
+ SETTINGS="${STATE_DIR}/settings.env"
+ 
+-usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
++usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+ 
+ command="install"
+ case "${1:-}" in
+-    install|update|host|printer|flash|status|check|calibrate|_update-check|_update-user) command="$1"; shift ;;
++    install|update|host|printer|flash|status|check|calibrate|use-new|_update-check|_update-user) command="$1"; shift ;;
+     -h|--help) usage ;;
+ esac
+ while [ $# -gt 0 ]; do
+@@ -277,6 +278,7 @@ EOF
+     fi
+     local healthy=0
+     verify_install || healthy=1
++    kept_configs_report
+     final_notes "$healthy"
+ }
+ 
+@@ -306,7 +308,10 @@ EOF
+     wait_ready || true
+     printer_helixscreen_update
+     [ "$KEEP_KLIPPER" = 1 ] && warn "Klipper kept at $(klipper_version): run ./install.sh flash to move to $(firmware_id)"
+-    verify_install
++    local healthy=0
++    verify_install || healthy=1
++    kept_configs_report
++    return "$healthy"
+ }
+ 
+ # Host Klipper and MCU firmware are built from the same tree: without a flash, the host
+@@ -352,6 +357,8 @@ do_update_unattended() {
+         sleep 5
+     fi
+     wait_ready || true
++    local configs=()
++    mapfile -t configs < <(kept_configs_lines)
+     if [ -f "${STATE_DIR}/klipper-kept" ]; then
+         local kept
+         kept="$(cat "${STATE_DIR}/klipper-kept")"
+@@ -360,7 +367,10 @@ do_update_unattended() {
+             "Everything was updated except Klipper: the new Klipper needs the printer boards flashed (${kept:-unknown} -> $(firmware_id)), which is never done from here." \
+             "Your printer works as before. To get the new Klipper, when no print is running and you are next to the printer, open a terminal on a computer and run:" \
+             "ssh ${USER}@${HOST_IP}" \
+-            "cd ~/q2-offload && ./install.sh flash"
++            "cd ~/q2-offload && ./install.sh flash" \
++            "${configs[@]}"
++    elif [ "${#configs[@]}" -gt 0 ]; then
++        notify_dialog "update done, some config files kept" "${configs[@]}"
+     else
+         notify "update done (firmware $(firmware_id))"
+     fi
+@@ -430,11 +440,13 @@ case "$command" in
+     update) if [ "$UNATTENDED" = 1 ] && [ "$(id -u)" = 0 ]; then do_update_unattended; else do_update; fi ;;
+     _update-check) do_update_check ;;
+     _update-user) do_update_user ;;
+-    host) preflight; banner; host_install_all; in_ci || host_start ;;
++    host) preflight; banner; host_install_all; in_ci || host_start; kept_configs_report ;;
+     printer) preflight; printer_prepare; printer_proxies; printer_helixscreen ;;
+     flash) preflight; printing && die "a print is running"; host_firmware; printer_prepare; printer_convert
+         host_klipper; proot proxies-start; host_start ;;
+     status) do_status ;;
++    use-new) [ -f "$SETTINGS" ] || in_ci || die "not installed yet"
++        printing && die "a print is running: run it after the print"; use_new_configs ;;
+     check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
+     calibrate) [ -f "$SETTINGS" ] || die "not installed yet"
+         printing && die "a print is running"; klipper_ready || die "Klipper is not ready"
+diff --git a/scripts/host.sh b/scripts/host.sh
+index ea88150..787b412 100644
+--- a/scripts/host.sh
++++ b/scripts/host.sh
+@@ -8,6 +8,9 @@ CFG="${DATA}/config"
+ BOX_BOWDEN_LENGTH=763.2
+ STATE_DIR="${HOME}/.config/q2-offload"
+ MANIFEST="${STATE_DIR}/installed-files.sha256"
++# Config files the last update kept because they were edited (or copied by hand), one path per
++# line: the new version is next to each as .new. Shown at the end of the install or update.
++KEPT_CONFIGS="${STATE_DIR}/kept-configs"
+ KLIPPY_ENV="${HOME}/klippy-env"
+ NGINX_SITE=/etc/nginx/sites-available/q2-offload
+ 
+@@ -89,6 +92,47 @@ notify_dialog() {
+         localhost:7125/printer/gcode/script 2>/dev/null || true
+ }
+ 
++# kept_configs_lines: what to tell about the config files the update kept, one line each;
++# nothing when it kept none
++kept_configs_lines() {
++    local f
++    [ -s "$KEPT_CONFIGS" ] || return 0
++    echo "These config files were kept as they are, because they were edited or copied by hand. The new version of each is next to it as .new:"
++    while read -r f; do echo "${f#"${HOME}"/}"; done < "$KEPT_CONFIGS"
++    echo "Compare each with its .new (Mainsail: Machine; Fluidd: Configuration). To take the new versions (yours are kept as .bak-DATE, Klipper restarts), when no print is running:"
++    echo "ssh ${USER}@${HOST_IP:-HOST}"
++    echo "cd ~/q2-offload && ./install.sh use-new"
++}
++
++# Same, at the end of an install or update in a terminal
++kept_configs_report() {
++    local lines
++    lines="$(kept_configs_lines)"
++    [ -n "$lines" ] || return 0
++    printf '\n%sConfig files kept%s\n' "${C_WARN}" "${C_OFF}"
++    printf '  %s\n' "${lines//$'\n'/$'\n'  }"
++}
++
++# use-new: replace each kept config file by its .new; the user's copy stays as .bak-<date>
++use_new_configs() {
++    local f stamp changed=0
++    [ -s "$KEPT_CONFIGS" ] || { info "no config file waiting for its new version"; return 0; }
++    stamp="$(date +%Y%m%d-%H%M%S)"
++    while read -r f; do
++        [ -e "${f}.new" ] || continue
++        cp -p "$f" "${f}.bak-${stamp}"
++        mv "${f}.new" "$f"
++        chmod --reference="${f}.bak-${stamp}" "$f"
++        manifest_set "$(sha256sum < "$f" | cut -d' ' -f1)" "$f"
++        ok "${f#"${HOME}"/} (yours: ${f#"${HOME}"/}.bak-${stamp})"
++        changed=1
++    done < "$KEPT_CONFIGS"
++    : > "$KEPT_CONFIGS"
++    [ "$changed" = 1 ] || return 0
++    in_ci && return 0
++    curl -s -o /dev/null -X POST localhost:7125/printer/restart && info "Klipper restarting with the new config"
++}
++
+ # Systemd/nginx/docker are skipped in CI containers
+ in_ci() { [ "${Q2_CI:-0}" = 1 ]; }
+ 
+@@ -134,6 +178,8 @@ install_config() {
+     local src="$1" dest="$2" old_sum cur_sum new_sum
+     mkdir -p "$(dirname "$dest")" "$STATE_DIR"
+     touch "$MANIFEST"
++    # mktemp makes the rendered file 0600: a file cp creates would keep that mode
++    chmod 644 "$src"
+     new_sum="$(sha256sum < "$src" | cut -d' ' -f1)"
+     if [ -e "$dest" ]; then
+         cur_sum="$(sha256sum < "$dest" | cut -d' ' -f1)"
+@@ -143,8 +189,12 @@ install_config() {
+             return 0
+         fi
+         if [ -n "$old_sum" ] && [ "$cur_sum" != "$old_sum" ]; then
++            rm -f "${dest}.new"
+             cp "$src" "${dest}.new"
+             warn "kept your edited ${dest#"${HOME}"/}; new version saved as ${dest#"${HOME}"/}.new"
++            # printer.cfg holds the calibrations: it is never replaced, its .new is for reference
++            [ "$dest" = "${CFG}/printer.cfg" ] || grep -qxF "$dest" "$KEPT_CONFIGS" 2>/dev/null \
++                || echo "$dest" >> "$KEPT_CONFIGS"
+             return 0
+         fi
+         if [ -z "$old_sum" ]; then
+@@ -363,6 +413,8 @@ host_happy_hare() {
+ 
+ host_config() {
+     local f tmp
++    mkdir -p "$STATE_DIR"
++    : > "$KEPT_CONFIGS"
+     tmp="$(mktemp)"
+     for f in "${Q2_ROOT}"/config/klipper/*.cfg; do
+         render "$f" | toggle > "$tmp"
+diff --git a/tests/host/kept-configs.sh b/tests/host/kept-configs.sh
+new file mode 100755
+index 0000000..eb32cbc
+--- /dev/null
++++ b/tests/host/kept-configs.sh
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++# A config file edited by hand: the update keeps it, says so at the end with what to do, writes
++# a readable .new, and "install.sh use-new" takes the new version (the edited one kept as .bak).
++# Run by tests/host/run.sh as the install user, after a CI install.
++set -euo pipefail
++cfg="${HOME}/printer_data/config/gcode_macro_mmu.cfg"
++kept="${HOME}/.config/q2-offload/kept-configs"
++fail() { echo "FAIL: $*"; exit 1; }
++
++echo "# edited by hand" >> "$cfg"
++out="$(./install.sh host --ci --yes)"
++grep -q "Config files kept" <<<"$out" || fail "no kept-files notice at the end"
++grep -q "printer_data/config/gcode_macro_mmu.cfg" <<<"$out" || fail "edited file not listed"
++grep -q "install.sh use-new" <<<"$out" || fail "no instructions"
++grep -qxF "$cfg" "$kept" || fail "not in ${kept}"
++[ "$(stat -c %a "${cfg}.new")" = 644 ] || fail "${cfg}.new is not 644"
++
++./install.sh use-new --ci
++grep -q "edited by hand" "$cfg" && fail "use-new left the edited file"
++grep -q "edited by hand" "$cfg".bak-* || fail "edited file not kept as .bak"
++[ ! -e "${cfg}.new" ] || fail ".new left behind"
++[ ! -s "$kept" ] || fail "kept list not emptied"
++[ "$(stat -c %a "$cfg")" = 644 ] || fail "${cfg} is not 644"
++
++out="$(./install.sh host --ci --yes)"
++grep -q "Config files kept" <<<"$out" && fail "notice shown with nothing kept"
++echo "kept config files: ok"
+diff --git a/tests/host/run.sh b/tests/host/run.sh
+index 135c48b..988da06 100755
+--- a/tests/host/run.sh
++++ b/tests/host/run.sh
+@@ -32,3 +32,5 @@ echo "== re-run (update path must be idempotent)"
+ as_q2 './install.sh host --ci --yes && scripts/validate-config.sh ~/dist'
+ echo "== unattended update, user phase (what Moonraker triggers)"
+ as_q2 './install.sh _update-user --unattended --ci && scripts/validate-config.sh ~/dist'
++echo "== a config file edited by hand is kept, listed, and taken back with use-new"
++as_q2 'tests/host/kept-configs.sh && scripts/validate-config.sh ~/dist'
+-- 
+2.47.3
+

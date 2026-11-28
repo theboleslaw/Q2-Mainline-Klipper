@@ -20,7 +20,8 @@ git clone git@github.com:theboleslaw/Q2-Mainline-Klipper.git ~/Q2-Mainline-Klipp
 
 1. clones q2-offload at `v2026.11.25` (if it is not already there),
 2. applies `reinstall/q2-offload-local.patch` — the Happy Hare pin, local MMU
-   patches and overrides,
+   patches and overrides — and `reinstall/q2-offload-kept-configs.patch` (the
+   kept-config notice and `./install.sh use-new`),
 3. copies this repo to `~/printer_data/config` when that directory does not
    exist yet,
 4. runs `./install.sh --printer <printer-ip>` (interactive),
@@ -69,6 +70,7 @@ cd ~/q2-offload && ./install.sh update
 | File | Purpose |
 | --- | --- |
 | `reinstall/q2-offload-local.patch` | q2-offload `VERSIONS` pin (`development@6717a8a`), local MMU patches, Box fan at 38 °C, empty-gate rotation, runout/park overrides |
+| `reinstall/q2-offload-kept-configs.patch` | q2-offload lists the config files an update kept and adds `./install.sh use-new` to take their new versions |
 | `reinstall/moonraker-mmu-log.patch` | Moonraker `MMU` log rollover and `mmu_server` component |
 | `printer.cfg` | calibrated input shaper, load cell, bed mesh and machine settings |
 | `mmu/base/*.cfg` | Happy Hare config generated from the pinned version + overrides |
@@ -141,4 +143,6 @@ Fluidd    http://192.168.3.220/
 
 `restore.sh` applies the patches but does not overwrite your printer config. When
 q2-offload updates a generated file, it may leave a `*.new` copy next to it.
-Compare and merge those manually; commit the result here.
+Compare and merge those manually; commit the result here. If several files were
+kept, `cd ~/q2-offload && ./install.sh use-new` takes their new versions and
+keeps yours as `.bak-<date>`; run it when no print is active.

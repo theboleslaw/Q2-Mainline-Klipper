@@ -32,6 +32,12 @@ if ! git log -1 --format=%s | grep -q '^Local: pin Happy Hare'; then
         "${SRC}/reinstall/q2-offload-local.patch"
 fi
 
+if ! git log -1 --format=%s | grep -q '^fix: show the config files an update kept'; then
+    log "Applying the kept-config fix"
+    git am --quiet -3 --committer-date-is-author-date \
+        "${SRC}/reinstall/q2-offload-kept-configs.patch"
+fi
+
 if [ ! -d "${CFG}/.git" ]; then
     log "Installing the config repository into ${CFG}"
     mkdir -p "$(dirname "${CFG}")"

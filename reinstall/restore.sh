@@ -14,7 +14,7 @@ log() { printf '==> %s\n' "$*"; }
 apply_patch_if_missing() {
     local dir="$1" subject="$2" patch="$3"
     [ -d "${dir}/.git" ] || return 0
-    if git -C "${dir}" log -1 --format=%s | grep -qF "${subject}"; then
+    if git -C "${dir}" log --format=%s | grep -qF "${subject}"; then
         return 0
     fi
     log "Applying $(basename "${patch}") to ${dir}"
@@ -24,11 +24,13 @@ apply_patch_if_missing() {
 # q2-offload: keep the local pin/patches/overrides on a branch that tracks main.
 if [ -d "${Q2}/.git" ]; then
     git -C "${Q2}" fetch --quiet origin
-    if ! git -C "${Q2}" log -1 --format=%s | grep -qF 'Local: pin Happy Hare'; then
+    if ! git -C "${Q2}" log --format=%s | grep -qF 'Local: pin Happy Hare'; then
         git -C "${Q2}" checkout --quiet -B main origin/main
     fi
     apply_patch_if_missing "${Q2}" 'Local: pin Happy Hare' \
         "${ROOT}/reinstall/q2-offload-local.patch"
+    apply_patch_if_missing "${Q2}" 'fix: show the config files an update kept' \
+        "${ROOT}/reinstall/q2-offload-kept-configs.patch"
     git -C "${Q2}" branch --set-upstream-to=origin/main main >/dev/null 2>&1 || true
 fi
 
